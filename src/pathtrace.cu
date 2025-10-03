@@ -7,6 +7,9 @@
 #include <thrust/random.h>
 #include <thrust/remove.h>
 #include <thrust/partition.h>
+#include <thrust/device_vector.h>
+#include <thrust/sort.h>
+#include <iostream>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -147,10 +150,15 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.ray.origin = cam.position;
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
-        // TODO: implement antialiasing by jittering the ray
+        // DONE: implement antialiasing by jittering the ray
+        thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, 0);
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        float jx = u01(rng);
+        float jy = u01(rng);
+
         segment.ray.direction = glm::normalize(cam.view
-            - cam.right * cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f)
+            - cam.right * cam.pixelLength.x * ((float)x + jx - (float)cam.resolution.x * 0.5f)
+            - cam.up * cam.pixelLength.y * ((float)y + jy - (float)cam.resolution.y * 0.5f)
         );
 
         segment.pixelIndex = index;
@@ -245,7 +253,6 @@ __global__ void shadeMaterial(
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-
     PathSegment& seg = pathSegments[idx];
 
     if (seg.remainingBounces <= 0) {
@@ -314,6 +321,13 @@ struct IsDead {
     }
 };
 
+struct SortMaterialId {
+    __host__ __device__ bool operator()(const ShadeableIntersection& a, const ShadeableIntersection& b) const {
+        return a.materialId < b.materialId;
+    }
+};
+
+
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
  * of memory management
@@ -363,7 +377,6 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     //   for you.
 
     // TODO: perform one iteration of path tracing
-
     generateRayFromCamera<<<blocksPerGrid2d, blockSize2d>>>(cam, iter, traceDepth, dev_paths);
     checkCUDAError("generate camera ray");
 
@@ -403,6 +416,10 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         // TODO: compare between directly shading the path segments and shading
         // path segments that have been reshuffled to be contiguous in memory.
 
+        if (guiData != NULL && guiData->tog_material_sort && depth > 0) {
+            thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, SortMaterialId{});
+        }
+
         shadeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
             iter,
             num_paths,
@@ -415,8 +432,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         auto end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, IsDead{});
         num_paths = end - dev_paths;
 
-        iterationComplete = num_paths == 0 || depth == traceDepth; // TODO: should be based off stream compaction results.
-
+        if (num_paths == 0 || depth == traceDepth) iterationComplete = true; // DONE: should be based off stream compaction results.
+        
         if (guiData != NULL)
         {
             guiData->TracedDepth = depth;
