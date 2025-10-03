@@ -249,7 +249,8 @@ __global__ void shadeMaterial(
     int num_paths,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
-    Material* materials)
+    Material* materials,
+    bool rr)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -287,6 +288,22 @@ __global__ void shadeMaterial(
 
                 scatterRay(seg, intersect, normal, material, rng);
                 seg.remainingBounces -= 1;
+
+                // Russian Roulette
+                if (rr && iter > 3) {
+                    float prob = fmaxf(seg.color.x, fmaxf(seg.color.y, seg.color.z));
+                    prob = fminf(prob, 0.95f);
+
+                    float r = u01(rng);
+                    if (r > prob) {
+                        seg.color = glm::vec3(0.0f);
+                        seg.remainingBounces = 0;
+                    }
+                    else {
+                        seg.color /= prob;
+                    }
+                }
+         
             }
             // If there was no intersection, color the ray black.
             // Lots of renderers use 4 channel color, RGBA, where A = alpha, often
@@ -420,12 +437,14 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, SortMaterialId{});
         }
 
+        bool rr = guiData->tog_rr;
         shadeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
             iter,
             num_paths,
             dev_intersections,
             dev_paths,
-            dev_materials
+            dev_materials,
+            rr
         );
 
         // Stream Compaction

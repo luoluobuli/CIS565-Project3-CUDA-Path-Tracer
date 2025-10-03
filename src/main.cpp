@@ -287,7 +287,11 @@ void RenderImGui()
     ImGui::Text("Traced Depth %d", imguiData->TracedDepth);
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
-    if (ImGui::Button("Material sort")) imguiData->tog_material_sort = 1 - imguiData->tog_material_sort;
+    ImGui::Checkbox("Material sort", &imguiData->tog_material_sort);
+    ImGui::Checkbox("Russion Rulette", &imguiData->tog_rr);
+
+    //if (ImGui::Button("Material sort")) imguiData->tog_material_sort = 1 - imguiData->tog_material_sort;
+    //if (ImGui::Button("Russion Rulette")) imguiData->tog_rr = 1 - imguiData->tog_rr;
 
     ImGui::End();
 
