@@ -6,6 +6,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <thrust/partition.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -278,7 +279,6 @@ __global__ void shadeMaterial(
                 glm::vec3 normal = intersection.surfaceNormal;
 
                 scatterRay(seg, intersect, normal, material, rng);
-                seg.color *= materialColor;
                 seg.remainingBounces -= 1;
             }
             // If there was no intersection, color the ray black.
@@ -304,6 +304,15 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
         image[iterationPath.pixelIndex] += iterationPath.color;
     }
 }
+
+/*
+* A predicate, returns whether the path is dead
+*/
+struct IsDead {
+    __host__ __device__ bool operator()(PathSegment& seg) const {
+        return seg.remainingBounces > 0;
+    }
+};
 
 /**
  * Wrapper for the __global__ call that sets up the kernel calls and does a ton
@@ -401,7 +410,12 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_materials
         );
-        iterationComplete = depth >= traceDepth; // TODO: should be based off stream compaction results.
+
+        // Stream Compaction
+        auto end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, IsDead{});
+        num_paths = end - dev_paths;
+
+        iterationComplete = num_paths == 0 || depth == traceDepth; // TODO: should be based off stream compaction results.
 
         if (guiData != NULL)
         {
@@ -411,7 +425,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-    finalGather<<<numBlocksPixels, blockSize1d>>>(num_paths, dev_image, dev_paths);
+    finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_image, dev_paths);
 
     ///////////////////////////////////////////////////////////////////////////
 
