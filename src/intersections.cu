@@ -111,3 +111,41 @@ __host__ __device__ float sphereIntersectionTest(
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+
+__host__ __device__ float triangleIntersectionTest(
+    Geom tri,
+    Ray r,
+    glm::vec3& intersectionPoint,
+    glm::vec3& normal,
+    glm::vec2& uv)
+{
+    // Ray-plane intersection
+    glm::vec3 n = glm::normalize(glm::cross(tri.v1.position - tri.v0.position, tri.v2.position - tri.v0.position));
+    float t = (glm::dot(tri.v0.position, n) - glm::dot(r.origin, n)) / dot(r.direction, n);
+    if (t < 0.001f) return -1;
+    intersectionPoint = getPointOnRay(r, t); // r.origin + r.direction * t;
+
+    // Test if the intersection is inside the triangle
+    glm::vec3 v0v1 = tri.v1.position - tri.v0.position;
+    glm::vec3 v0v2 = tri.v2.position - tri.v0.position;
+    glm::vec3 v0p = intersectionPoint - tri.v0.position;
+
+    float d00 = glm::dot(v0v1, v0v1);
+    float d01 = glm::dot(v0v1, v0v2);
+    float d11 = glm::dot(v0v2, v0v2);
+    float d20 = glm::dot(v0p, v0v1);
+    float d21 = glm::dot(v0p, v0v2);
+    float denom = d00 * d11 - d01 * d01;
+
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
+
+    if (u >= 0 && v >= 0 && w >= 0) {
+        normal = glm::normalize(u * tri.v0.normal + v * tri.v1.normal + w * tri.v2.normal);
+        return t;
+    }
+
+    return -1;
+}

@@ -349,16 +349,22 @@ int main(int argc, char** argv)
 {
     startTimeString = currentTimeString();
 
-    if (argc < 2)
+    if (argc < 1)
     {
         printf("Usage: %s SCENEFILE.json\n", argv[0]);
         return 1;
     }
 
-    const char* sceneFile = argv[1];
+    std::vector<std::string> sceneFiles;
+    
+    for (int i = 1; i < argc; ++i) {
+        const char* sceneFile = argv[i];
+        std::cout << sceneFile << std::endl;
+        sceneFiles.push_back(sceneFile);
+    }
 
     // Load scene file
-    scene = new Scene(sceneFile);
+    scene = new Scene(sceneFiles);
 
     //Create Instance for ImGUIData
     guiData = new GuiDataContainer();
@@ -466,6 +472,8 @@ void runCuda()
         // execute the kernel
         int frame = 0;
         pathtrace(pbo_dptr, frame, iteration);
+
+        std::cout << "check pathtrace\n";
 
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);

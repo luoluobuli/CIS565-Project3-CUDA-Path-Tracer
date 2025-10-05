@@ -12,13 +12,21 @@
 enum GeomType
 {
     SPHERE,
-    CUBE
+    CUBE,
+    TRIANGLE
 };
 
 struct Ray
 {
     glm::vec3 origin;
     glm::vec3 direction;
+};
+
+struct Vertex
+{
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 uv;
 };
 
 struct Geom
@@ -31,6 +39,15 @@ struct Geom
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
+    Vertex v0;
+    Vertex v1;
+    Vertex v2;
+};
+
+struct Texture {
+    int width;
+    int height;
+    std::vector<unsigned char> pixels;
 };
 
 struct Material
@@ -44,7 +61,8 @@ struct Material
     float hasReflective;
     float hasRefractive;
     float indexOfRefraction;
-    float emittance;
+    float emittance = 0;
+    int diffuseId = -1;
 };
 
 struct Camera
@@ -84,4 +102,5 @@ struct ShadeableIntersection
   float t;
   glm::vec3 surfaceNormal;
   int materialId;
+  glm::vec2 uv;
 };
