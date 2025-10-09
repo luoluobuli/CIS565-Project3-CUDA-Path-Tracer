@@ -76,6 +76,7 @@ __host__ __device__ void scatterRay(
     glm::vec3 intersect,
     glm::vec3 normal,
     const Material &m,
+    glm::vec3 color,
     thrust::default_random_engine &rng)
 {
     // TODO: implement this.
@@ -93,13 +94,13 @@ __host__ __device__ void scatterRay(
     // Specular
     if (m.hasReflective == 1.f || (m.hasReflective > 0.f && p < m.hasReflective)) { 
         wi = reflect(-wo, normal);
-        bsdf = m.color;
+        bsdf = color;
         pdf = dot(normal, wi); // to cancel out the cosTheta term
     }
     // Diffuse
     else { 
         wi = calculateRandomDirectionInHemisphere(normal, rng);
-        bsdf = m.color / PI;
+        bsdf = color / PI;
         pdf = dot(normal, wi) / PI;
     }
 

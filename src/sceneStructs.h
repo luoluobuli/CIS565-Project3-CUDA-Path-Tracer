@@ -47,7 +47,7 @@ struct Geom
 struct Texture {
     int width;
     int height;
-    std::vector<unsigned char> pixels;
+    std::vector<float4> pixels;
 };
 
 struct Material

@@ -10,6 +10,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/sort.h>
 #include <iostream>
+#include <cuda_runtime.h>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -82,9 +83,11 @@ static GuiDataContainer* guiData = NULL;
 static glm::vec3* dev_image = NULL;
 static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
-static unsigned char* dev_texPixels = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
+static cudaTextureObject_t texObj = 0;
+static cudaArray* cuArray = NULL;
+
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
 
@@ -114,13 +117,33 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
-    // TODO: initialize any extra device memeory you need
-    Texture tex = hst_scene->textures[0];
-    int size = tex.width * tex.height * 4 * sizeof(unsigned char);
-    cudaMalloc(&dev_texPixels, size);
-    cudaMemcpy(dev_texPixels, tex.pixels.data(), size, cudaMemcpyHostToDevice);
-
     checkCUDAError("pathtraceInit");
+
+    // TODO: initialize any extra device memeory you need
+    // Bind texture object
+    Texture tex = hst_scene->textures[0];
+
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float4>();
+    cudaMallocArray(&cuArray, &channelDesc, tex.width, tex.height);
+
+    cudaMemcpy2DToArray(cuArray, 0, 0, tex.pixels.data(),
+        tex.width * sizeof(float4), tex.width * sizeof(float4),
+        tex.height, cudaMemcpyHostToDevice);
+    checkCUDAError("pathtraceInit - memcpy to array");
+
+    cudaResourceDesc resDesc = {};
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = cuArray;
+
+    cudaTextureDesc texDesc = {};
+    texDesc.addressMode[0] = cudaAddressModeWrap;
+    texDesc.addressMode[1] = cudaAddressModeWrap;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 1;
+
+    cudaCreateTextureObject(&texObj, &resDesc, &texDesc, nullptr);
+    checkCUDAError("pathtraceInit - create texture object");
 }
 
 void pathtraceFree()
@@ -131,7 +154,8 @@ void pathtraceFree()
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
-    cudaFree(dev_texPixels);
+    cudaDestroyTextureObject(texObj);
+    cudaFreeArray(cuArray);
 
     checkCUDAError("pathtraceFree");
 }
@@ -249,17 +273,6 @@ __global__ void computeIntersections(
     }
 }
 
-__host__ __device__ glm::vec3 sampleTexture(const int& width, const int& height, unsigned char* pixels, const glm::vec2& uv_in) {
-    glm::vec2 uv = glm::fract(uv_in);
-    int x = int(uv.x * width);
-    int y = int((1.0f - uv.y) * height);
-
-    int idx = (y * width + x) * 4;
-
-    glm::vec3 color(pixels[idx + 0] / 255.0f, pixels[idx + 1] / 255.0f, pixels[idx + 2] / 255.0f);
-    return color;
-}
-
 // LOOK: "fake" shader demonstrating what you might do with the info in
 // a ShadeableIntersection, as well as how to use thrust's random number
 // generator. Observe that since the thrust random number generator basically
@@ -275,9 +288,7 @@ __global__ void shadeMaterial(
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
-    int texWidth,
-    int texHeight,
-    unsigned char* texPixels,
+    cudaTextureObject_t texObj,
     bool rr)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -300,12 +311,12 @@ __global__ void shadeMaterial(
             thrust::uniform_real_distribution<float> u01(0, 1);
 
             Material material = materials[intersection.materialId];
-            glm::vec3 materialColor;
+            glm::vec3 materialColor = material.color;
+
+            // Sample texture
             if (material.diffuseId != -1) {
-                materialColor = sampleTexture(texWidth, texHeight, texPixels, intersection.uv);
-            }
-            else {
-                materialColor = material.color;
+                float4 color = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
+                materialColor = glm::vec3(color.x, color.y, color.z);
             }
 
             // If the material indicates that the object was a light, "light" the ray
@@ -320,7 +331,7 @@ __global__ void shadeMaterial(
                 glm::vec3 intersect = getPointOnRay(seg.ray, intersection.t);
                 glm::vec3 normal = intersection.surfaceNormal;
 
-                scatterRay(seg, intersect, normal, material, rng);
+                scatterRay(seg, intersect, normal, material, materialColor, rng);
                 seg.remainingBounces--;
 
                 // Russian Roulette
@@ -470,18 +481,14 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             thrust::sort_by_key(thrust::device, dev_intersections, dev_intersections + num_paths, dev_paths, SortMaterialId{});
         }
 
-        int texWidth = hst_scene->textures[0].width;
-        int texHeight = hst_scene->textures[0].height;
         bool rr = guiData->tog_rr;
-        shadeMaterial << <numblocksPathSegmentTracing, blockSize1d >> > (
+        shadeMaterial<<<numblocksPathSegmentTracing, blockSize1d>>>(
             iter,
             num_paths,
             dev_intersections,
             dev_paths,
             dev_materials,
-            texWidth,
-            texHeight,
-            dev_texPixels,
+            texObj,
             rr
         );
 
@@ -490,7 +497,9 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         num_paths = end - dev_paths;
 
         if (num_paths == 0 || depth == traceDepth) iterationComplete = true; // DONE: should be based off stream compaction results.
-        
+        iterationComplete = true;
+
+
         if (guiData != NULL)
         {
             guiData->TracedDepth = depth;

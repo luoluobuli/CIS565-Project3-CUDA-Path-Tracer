@@ -120,16 +120,24 @@ __host__ __device__ float triangleIntersectionTest(
     glm::vec3& normal,
     glm::vec2& uv)
 {
+    // Transform ray to object space
+    glm::vec3 ro = multiplyMV(tri.inverseTransform, glm::vec4(r.origin, 1.0f));
+    glm::vec3 rd = glm::normalize(multiplyMV(tri.inverseTransform, glm::vec4(r.direction, 0.0f)));
+
+    Ray rt;
+    rt.origin = ro;
+    rt.direction = rd;
+
     // Ray-plane intersection
     glm::vec3 n = glm::normalize(glm::cross(tri.v1.position - tri.v0.position, tri.v2.position - tri.v0.position));
-    float t = (glm::dot(tri.v0.position, n) - glm::dot(r.origin, n)) / dot(r.direction, n);
+    float t = (glm::dot(tri.v0.position, n) - glm::dot(ro, n)) / dot(rd, n);
     if (t < 0.001f) return -1;
-    intersectionPoint = getPointOnRay(r, t); // r.origin + r.direction * t;
+    glm::vec3 objspaceIntersection = getPointOnRay(rt, t);
 
     // Test if the intersection is inside the triangle
     glm::vec3 v0v1 = tri.v1.position - tri.v0.position;
     glm::vec3 v0v2 = tri.v2.position - tri.v0.position;
-    glm::vec3 v0p = intersectionPoint - tri.v0.position;
+    glm::vec3 v0p = objspaceIntersection - tri.v0.position;
 
     float d00 = glm::dot(v0v1, v0v1);
     float d01 = glm::dot(v0v1, v0v2);
@@ -143,7 +151,16 @@ __host__ __device__ float triangleIntersectionTest(
     float u = 1.0f - v - w;
 
     if (u >= 0 && v >= 0 && w >= 0) {
-        normal = glm::normalize(u * tri.v0.normal + v * tri.v1.normal + w * tri.v2.normal);
+        // Position
+        intersectionPoint = multiplyMV(tri.transform, glm::vec4(objspaceIntersection, 1.f)); // Transform to world space
+        
+        // Normal
+        glm::vec3 objspaceNormal = glm::normalize(u * tri.v0.normal + v * tri.v1.normal + w * tri.v2.normal);
+        normal = glm::normalize(multiplyMV(tri.invTranspose, glm::vec4(objspaceNormal, 0.f))); // Transform to world space
+
+        // UV
+        uv = u * tri.v0.uv + v * tri.v1.uv + w * tri.v2.uv;
+
         return t;
     }
 

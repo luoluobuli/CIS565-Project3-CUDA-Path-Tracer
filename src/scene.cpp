@@ -202,13 +202,14 @@ static void processNode(std::vector<Geom>& geoms, int nodeIndex, const tinygltf:
             * glm::mat4_cast(rotation)
             * glm::scale(glm::mat4(1.0f), scale);
     }
-    local = glm::translate(local, glm::vec3(0.f, 2.f, 0.f));
+
+    // Hardcoded waterbottle transformation!!
+    local = glm::translate(local, glm::vec3(0.f, 2.f, 0.f)); 
     local = glm::scale(local, glm::vec3(10.f));
+    local = glm::rotate(local, glm::radians(90.f), glm::vec3(0, 1, 0));
 
     // Get the world transformation
     glm::mat4 world = parentTransform * local; 
-    glm::mat3 world_normal = glm::transpose(glm::inverse(glm::mat3(world))); // World normal transformation
-
     
     if (node.mesh >= 0 && node.mesh < model.meshes.size()) {
 
@@ -216,6 +217,9 @@ static void processNode(std::vector<Geom>& geoms, int nodeIndex, const tinygltf:
         for (const auto& prim : mesh.primitives) {
             Geom tri;
             tri.type = TRIANGLE;
+            tri.transform = world;
+            tri.inverseTransform = glm::inverse(world);
+            tri.invTranspose = glm::inverseTranspose(world);
 
             // Material Index
             int materialId = prim.material;
@@ -246,7 +250,6 @@ static void processNode(std::vector<Geom>& geoms, int nodeIndex, const tinygltf:
             const auto& texView = model.bufferViews[texAcc.bufferView];
             const auto& texBuf = model.buffers[texView.buffer];
             float* texcoords = (float*)&texBuf.data[texView.byteOffset + texAcc.byteOffset];
-            
 
             // Store triangles
             for (size_t i = 0; i < idxAcc.count; i += 3) {
@@ -255,30 +258,22 @@ static void processNode(std::vector<Geom>& geoms, int nodeIndex, const tinygltf:
                 unsigned short i2 = indices[i + 2];
 
                 // Positions
-                glm::vec3 p0_d3(positions[3 * i0 + 0], positions[3 * i0 + 1], positions[3 * i0 + 2]);
-                glm::vec3 p1_d3(positions[3 * i1 + 0], positions[3 * i1 + 1], positions[3 * i1 + 2]);
-                glm::vec3 p2_d3(positions[3 * i2 + 0], positions[3 * i2 + 1], positions[3 * i2 + 2]);
+                glm::vec3 p0(positions[3 * i0 + 0], positions[3 * i0 + 1], positions[3 * i0 + 2]);
+                glm::vec3 p1(positions[3 * i1 + 0], positions[3 * i1 + 1], positions[3 * i1 + 2]);
+                glm::vec3 p2(positions[3 * i2 + 0], positions[3 * i2 + 1], positions[3 * i2 + 2]);
 
-                glm::vec4 p0 = world * glm::vec4(p0_d3, 1.f);
-                glm::vec4 p1 = world * glm::vec4(p1_d3, 1.f);
-                glm::vec4 p2 = world * glm::vec4(p2_d3, 1.f);
-
-                tri.v0.position = glm::vec3(p0);
-                tri.v1.position = glm::vec3(p1);
-                tri.v2.position = glm::vec3(p2);
+                tri.v0.position = p0;
+                tri.v1.position = p1;
+                tri.v2.position = p2;
 
                 // Normals
-                glm::vec3 n0_d3(normals[3 * i0 + 0], normals[3 * i0 + 1], normals[3 * i0 + 2]);
-                glm::vec3 n1_d3(normals[3 * i1 + 0], normals[3 * i1 + 1], normals[3 * i1 + 2]);
-                glm::vec3 n2_d3(normals[3 * i2 + 0], normals[3 * i2 + 1], normals[3 * i2 + 2]);
+                glm::vec3 n0(normals[3 * i0 + 0], normals[3 * i0 + 1], normals[3 * i0 + 2]);
+                glm::vec3 n1(normals[3 * i1 + 0], normals[3 * i1 + 1], normals[3 * i1 + 2]);
+                glm::vec3 n2(normals[3 * i2 + 0], normals[3 * i2 + 1], normals[3 * i2 + 2]);
 
-                glm::vec3 n0 = world_normal * n0_d3;
-                glm::vec3 n1 = world_normal * n1_d3;
-                glm::vec3 n2 = world_normal * n2_d3;
-
-                tri.v0.normal = glm::vec3(n0);
-                tri.v1.normal = glm::vec3(n1);
-                tri.v2.normal = glm::vec3(n2);
+                tri.v0.normal = n0;
+                tri.v1.normal = n1;
+                tri.v2.normal = n2;
 
                 // Texcoord
                 if (hasTex) {
@@ -320,20 +315,16 @@ void Scene::loadFromGLTF(const std::string& filename) {
         std::cout << "ERR: " << err << std::endl;
     }
 
-    // Store textures
-    textures.reserve(model.images.size());
-    for (const auto& image : model.images) {
-        Texture tex;
-        tex.width = image.width;
-        tex.height = image.height;
-        tex.pixels = image.image;
-        textures.push_back(tex);
+    // Store geometries from nodes
+    for (int rootNode : model.scenes[model.defaultScene].nodes) {
+        processNode(geoms, rootNode, model, glm::mat4(1.0f));
     }
 
     // Store materials
     // All material list: model.materials
     // Each material: model.materials.pbrMetallicRoughness
     // Base color: model.materials.pbrMetallicRoughness.baseColorFactor
+    std::cout << std::endl << "============ Materials ==============" << std::endl;
     for (const auto& material : model.materials) {
         Material m;
         const auto& pbr = material.pbrMetallicRoughness;
@@ -345,13 +336,39 @@ void Scene::loadFromGLTF(const std::string& filename) {
             m.diffuseId = tex.source;
         }
 
-        materials.push_back(m);
+        std::cout << "Material: " << material.name << std::endl;
+        printf("Base color: (%f, %f, %f)\n", m.color.r, m.color.g, m.color.b);
+        printf("Emittance: %f\n", m.emittance);
+        printf("Diffuse texture id: %i\n", m.diffuseId);
+
+        materials.push_back(std::move(m));
     }
 
-    // Store geometries from nodes
-    for (int rootNode : model.scenes[model.defaultScene].nodes) {
-        processNode(geoms, rootNode, model, glm::mat4(1.0f));
+    // Store textures
+    std::cout << std::endl << "============ Textures ==============" << std::endl;
+    //for (int i = 0; i < model.images.size(); ++i) {
+    for (int i = 0; i < 1; ++i) {
+        const auto& image = model.images[i];
+        std::cout << "Texture " << i << ": " << image.uri << std::endl;
+
+        int size = image.width * image.height;
+
+        Texture tex;
+        tex.pixels.resize(size);
+        for (int i = 0; i < size; ++i) {
+            float r = image.image[i * image.component + 0] / 255.f; // image.component: the channels of the iamge (3 for RGB or 4 for RGBA)
+            float g = image.image[i * image.component + 1] / 255.f;
+            float b = image.image[i * image.component + 2] / 255.f;
+            float a = (image.component == 4) ? (image.image[i * image.component + 3] / 255.f) : 1.f;
+
+            tex.pixels[i] = make_float4(r, g, b, a); // use float4 instead of glm::vec4 to match cuda settings when passing data
+        }
+
+        tex.width = image.width;
+        tex.height = image.height;
+        textures.push_back(std::move(tex));
     }
+    std::cout << std::endl;
 }
 
 void Scene::initializeScene() {
@@ -390,11 +407,11 @@ void Scene::initializeScene() {
     RenderState& state = this->state;
 
     camera.resolution = glm::ivec2(800, 800);
-    camera.position = glm::vec3(0.0, 2.0, 5.0);
-    camera.lookAt = glm::vec3(0.0, 2.0, 0.0);
+    camera.position = glm::vec3(0.0, 0.0, 3.0);
+    camera.lookAt = glm::vec3(0.0, 0.0, 0.0);
     camera.up = glm::vec3(0.0, 1.0, 0.0);
     
-    float fovy = 45.f;
+    float fovy = 25.f;
     float yscaled = tan(fovy * (PI / 180));
     float xscaled = (yscaled * camera.resolution.x) / camera.resolution.y;
     float fovx = (atan(xscaled) * 180) / PI;

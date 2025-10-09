@@ -473,8 +473,6 @@ void runCuda()
         int frame = 0;
         pathtrace(pbo_dptr, frame, iteration);
 
-        std::cout << "check pathtrace\n";
-
         // unmap buffer object
         cudaGLUnmapBufferObject(pbo);
     }
