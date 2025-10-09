@@ -169,7 +169,7 @@ static void processNode(std::vector<Geom>& geoms, int nodeIndex, const tinygltf:
     // Hardcoded waterbottle transformation!!
     local = glm::translate(local, glm::vec3(0.f, 2.f, 0.f)); 
     local = glm::scale(local, glm::vec3(10.f));
-    local = glm::rotate(local, glm::radians(90.f), glm::vec3(0, 1, 0));
+    local = glm::rotate(local, glm::radians(80.f), glm::vec3(0, 1, 0));
 
     // Get the world transformation
     glm::mat4 world = parentTransform * local; 
@@ -303,6 +303,11 @@ void Scene::loadFromGLTF(const std::string& filename) {
             m.roughMetalId = ormTex.source;
         }
 
+        if (material.normalTexture.index >= 0) {
+            const auto& normalTex = model.textures[material.normalTexture.index];
+            m.normalId = normalTex.source;
+        }
+
         std::cout << "Material: " << material.name << std::endl;
         printf("Base color: (%f, %f, %f)\n", m.baseColor.r, m.baseColor.g, m.baseColor.b);
         printf("Roughness: %f\n", m.roughness);
@@ -312,14 +317,15 @@ void Scene::loadFromGLTF(const std::string& filename) {
         printf("Refraction: %f\n", m.hasRefractive);
         printf("Base color texture id: %i\n", m.diffuseId);
         printf("Roughness/Metallic texture id: %i\n", m.roughMetalId);
+        printf("Normal texture id: %i\n", m.normalId);
 
         materials.push_back(std::move(m));
     }
 
     // Store textures
     std::cout << std::endl << "============ Textures ==============" << std::endl;
-    //for (int i = 0; i < model.images.size(); ++i) {
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < model.images.size(); ++i) {
+    //for (int i = 0; i < 2; ++i) {
         const auto& image = model.images[i];
         std::cout << "Texture " << i << ": " << image.uri << std::endl;
 
@@ -327,13 +333,13 @@ void Scene::loadFromGLTF(const std::string& filename) {
 
         Texture tex;
         tex.pixels.resize(size);
-        for (int i = 0; i < size; ++i) {
-            float r = image.image[i * image.component + 0] / 255.f; // image.component: the channels of the iamge (3 for RGB or 4 for RGBA)
-            float g = image.image[i * image.component + 1] / 255.f;
-            float b = image.image[i * image.component + 2] / 255.f;
-            float a = (image.component == 4) ? (image.image[i * image.component + 3] / 255.f) : 1.f;
+        for (int j = 0; j < size; ++j) {
+            float r = image.image[j * image.component + 0] / 255.f; // image.component: the channels of the iamge (3 for RGB or 4 for RGBA)
+            float g = image.image[j * image.component + 1] / 255.f;
+            float b = image.image[j * image.component + 2] / 255.f;
+            float a = (image.component == 4) ? (image.image[j * image.component + 3] / 255.f) : 1.f;
 
-            tex.pixels[i] = make_float4(r, g, b, a); // use float4 instead of glm::vec4 to match cuda settings when passing data
+            tex.pixels[j] = make_float4(r, g, b, a); // use float4 instead of glm::vec4 to match cuda settings when passing data
         }
 
         tex.width = image.width;

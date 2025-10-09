@@ -7,6 +7,7 @@ CUDA Path Tracer
 * Tested on: Windows 11, AMD Ryzen 5 5600H @ 3.30 GHz 16.0GB, NVIDIA GeForce RTX 3050 Laptop GPU 4GB
 
 ## Overview
+### Run
 
 ## Features
 ### Diffuse and Perfect Specular BSDF

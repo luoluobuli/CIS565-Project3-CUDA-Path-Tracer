@@ -48,8 +48,6 @@ struct Texture {
     int width;
     int height;
     std::vector<float4> pixels;
-    //cudaTextureObject_t texObj = 0;
-    //cudaArray* cuArray = nullptr;
 };
 
 struct Material
@@ -73,6 +71,7 @@ struct Material
     // Texture IDs
     int diffuseId = -1;
     int roughMetalId = -1;
+    int normalId = -1;
 };
 
 struct Camera
@@ -113,4 +112,6 @@ struct ShadeableIntersection
   glm::vec3 surfaceNormal;
   int materialId;
   glm::vec2 uv;
+  glm::vec3 tangent;
+  glm::vec3 bitangent;
 };

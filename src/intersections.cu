@@ -118,7 +118,9 @@ __host__ __device__ float triangleIntersectionTest(
     Ray r,
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
-    glm::vec2& uv)
+    glm::vec2& uv,
+    glm::vec3& tangent,
+    glm::vec3& bitangent)
 {
     // Transform ray to object space
     glm::vec3 ro = multiplyMV(tri.inverseTransform, glm::vec4(r.origin, 1.0f));
@@ -150,6 +152,8 @@ __host__ __device__ float triangleIntersectionTest(
     float w = (d00 * d21 - d01 * d20) / denom;
     float u = 1.0f - v - w;
 
+ 
+
     if (u >= 0 && v >= 0 && w >= 0) {
         // Position
         intersectionPoint = multiplyMV(tri.transform, glm::vec4(objspaceIntersection, 1.f)); // Transform to world space
@@ -160,6 +164,15 @@ __host__ __device__ float triangleIntersectionTest(
 
         // UV
         uv = u * tri.v0.uv + v * tri.v1.uv + w * tri.v2.uv;
+
+        // Tangent and bitangent
+        glm::vec2 uv01 = tri.v1.uv - tri.v0.uv;
+        glm::vec2 uv02 = tri.v2.uv - tri.v0.uv;
+        float num = 1.0f / (uv01.x * uv02.y - uv01.y * uv02.x);
+        glm::vec3 objspaceTangent = glm::normalize((v0v1 * uv02.y - v0v2 * uv01.y) * num);
+        glm::vec3 objspaceBitangent = glm::normalize((v0v2 * uv01.x - v0v1 * uv02.x) * num);
+        tangent = glm::normalize(multiplyMV(tri.invTranspose, glm::vec4(objspaceTangent, 0.f)));
+        bitangent = glm::normalize(multiplyMV(tri.invTranspose, glm::vec4(objspaceBitangent, 0.f)));
 
         return t;
     }

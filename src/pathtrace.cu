@@ -247,6 +247,8 @@ __global__ void computeIntersections(
         glm::vec3 intersect_point;
         glm::vec3 normal;
         glm::vec2 uv;
+        glm::vec3 tangent;
+        glm::vec3 bitangent;
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
         bool outside = true;
@@ -254,6 +256,8 @@ __global__ void computeIntersections(
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
         glm::vec2 tmp_uv;
+        glm::vec3 tmp_tan;
+        glm::vec3 tmp_bitan;
 
         // naive parse through global geoms
 
@@ -272,7 +276,8 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
             else if (geom.type == TRIANGLE)
             {
-                t = triangleIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv);
+                t = triangleIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, 
+                    tmp_uv, tmp_tan, tmp_bitan);
             }
 
             // Compute the minimum t from the intersection tests to determine what
@@ -284,6 +289,8 @@ __global__ void computeIntersections(
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
                 uv = tmp_uv;
+                tangent = tmp_tan;
+                bitangent = tmp_bitan;
             }
         }
 
@@ -298,6 +305,8 @@ __global__ void computeIntersections(
             intersections[path_index].materialId = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
             intersections[path_index].uv = uv;
+            intersections[path_index].tangent = tangent;
+            intersections[path_index].bitangent = bitangent;
         }
     }
 }
@@ -343,10 +352,27 @@ __global__ void shadeMaterial(
             glm::vec3 materialColor = material.baseColor;
 
             // Sample texture
+            cudaTextureObject_t texObj;
+            float4 sample;
             if (material.diffuseId != -1) {
-                cudaTextureObject_t texObj = texObjConts[material.diffuseId].texObj;
-                float4 color = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
-                materialColor = glm::vec3(color.x, color.y, color.z);
+                texObj = texObjConts[material.diffuseId].texObj;
+                sample = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
+                materialColor = glm::vec3(sample.x, sample.y, sample.z);
+            }
+
+            if (material.normalId != -1) {
+                texObj = texObjConts[material.normalId].texObj;
+                sample = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
+
+                glm::vec3 newTan = normalize(glm::vec3(
+                    sample.x * 2.0f - 1.0f,
+                    sample.y * 2.0f - 1.0f,
+                    sample.z * 2.0f - 1.0f));
+
+                intersection.surfaceNormal = normalize(
+                    intersection.tangent * newTan.x +
+                    intersection.bitangent * newTan.y +
+                    intersection.surfaceNormal * newTan.z);
             }
 
             // If the material indicates that the object was a light, "light" the ray
@@ -362,6 +388,7 @@ __global__ void shadeMaterial(
                 glm::vec3 normal = intersection.surfaceNormal;
 
                 scatterRay(seg, intersect, normal, material, materialColor, rng);
+
                 seg.remainingBounces--;
 
                 // Russian Roulette
@@ -527,7 +554,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         num_paths = end - dev_paths;
 
         if (num_paths == 0 || depth == traceDepth) iterationComplete = true; // DONE: should be based off stream compaction results.
-        iterationComplete = true;
+        //iterationComplete = true;
 
 
         if (guiData != NULL)
