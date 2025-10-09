@@ -48,21 +48,31 @@ struct Texture {
     int width;
     int height;
     std::vector<float4> pixels;
+    //cudaTextureObject_t texObj = 0;
+    //cudaArray* cuArray = nullptr;
 };
 
 struct Material
 {
-    glm::vec3 color;
+    // PBR
+    glm::vec3 baseColor;
+    float occlusion;
+    float roughness;
+    float metallic;
+
     struct
     {
         float exponent;
         glm::vec3 color;
     } specular;
-    float hasReflective;
-    float hasRefractive;
+    float hasReflective = 0;
+    float hasRefractive = 0;
     float indexOfRefraction;
     float emittance = 0;
+
+    // Texture IDs
     int diffuseId = -1;
+    int roughMetalId = -1;
 };
 
 struct Camera

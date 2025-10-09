@@ -3,11 +3,29 @@ CUDA Path Tracer
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 3**
 
-* (TODO) YOUR NAME HERE
-* Tested on: (TODO) Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Joanne Li
+* Tested on: Windows 11, AMD Ryzen 5 5600H @ 3.30 GHz 16.0GB, NVIDIA GeForce RTX 3050 Laptop GPU 4GB
 
-### (TODO: Your README)
+## Overview
 
-*DO NOT* leave the README to the last minute! It is a crucial part of the
-project, and we will not be able to grade you without a good README.
+## Features
+### Diffuse and Perfect Specular BSDF
+### Stream Compaction
+### Material Sorting
+### Russian Roulette
+### Arbitrary glTF Mesh Loading
+### Texture Mapping
 
+handle texture storing
+structure:
+geometry -> material -> texture
+
+## Performance Analysis
+### Stream Compaction
+on/off
+
+open/closed scene
+### Material Sorting
+### Russian Roulette
+
+## Development

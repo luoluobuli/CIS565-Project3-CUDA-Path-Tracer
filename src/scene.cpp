@@ -34,43 +34,6 @@ Scene::Scene(std::vector<string> filenames)
         else if (ext == ".gltf") {
             loadFromGLTF(filename);
             //initializeScene();
-
-            /*
-            for (const auto& tri : geoms) {
-                cout << "vertex positions: " << endl;
-                cout << tri.v0.position.x << " " << tri.v0.position.y << " " << tri.v0.position.z << "\n"
-                    << tri.v1.position.x << " " << tri.v1.position.y << " " << tri.v1.position.z << "\n"
-                    << tri.v2.position.x << " " << tri.v2.position.y << " " << tri.v2.position.z << "\n";
-                cout << endl;
-                cout << "vertex normals: " << endl;
-                cout << tri.v0.normal.x << " " << tri.v0.normal.y << " " << tri.v0.normal.z << "\n"
-                    << tri.v1.normal.x << " " << tri.v1.normal.y << " " << tri.v1.normal.z << "\n"
-                    << tri.v2.normal.x << " " << tri.v2.normal.y << " " << tri.v2.normal.z << "\n";
-                cout << endl;
-
-                cout << "Tex coord: " << endl;
-                cout << tri.v0.uv.x << " " << tri.v0.uv.y << "\n"
-                    << tri.v1.uv.x << " " << tri.v1.uv.y << "\n"
-                    << tri.v2.uv.x << " " << tri.v2.uv.y << "\n";
-                cout << endl;
-            }
-
-
-            for (const auto& mat : materials) {
-                cout << "Material base colors: " << endl;
-                cout << mat.color.x << " " << mat.color.y << " " << mat.color.z << endl;
-                cout << endl;
-                cout << "Material emittance: " << endl;
-                cout << mat.emittance << endl;
-            }
-
-            cout << "Camera position: " << endl;
-            cout << state.camera.position.x << " " << state.camera.position.y << " " << state.camera.position.z << endl;
-
-            cout << "Camera view: " << endl;
-            cout << state.camera.view.x << " " << state.camera.view.y << " " << state.camera.view.z << endl;
-            */
-
             continue;
         }
         else
@@ -96,19 +59,19 @@ void Scene::loadFromJSON(const std::string& jsonName)
         if (p["TYPE"] == "Diffuse")
         {
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.hasReflective = 0.f;
         }
         else if (p["TYPE"] == "Emitting")
         {
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             newMaterial.emittance = p["EMITTANCE"];
         }
         else if (p["TYPE"] == "Specular")
         {
             const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.baseColor = glm::vec3(col[0], col[1], col[2]);
             float roughness = p["ROUGHNESS"];
             newMaterial.hasReflective = 1.f - roughness;
         }
@@ -328,18 +291,27 @@ void Scene::loadFromGLTF(const std::string& filename) {
     for (const auto& material : model.materials) {
         Material m;
         const auto& pbr = material.pbrMetallicRoughness;
-        m.color = glm::vec3((float)pbr.baseColorFactor[0], (float)pbr.baseColorFactor[1], (float)pbr.baseColorFactor[2]);
+        m.baseColor = glm::vec3((float)pbr.baseColorFactor[0], (float)pbr.baseColorFactor[1], (float)pbr.baseColorFactor[2]);
+        m.roughness = (float)pbr.roughnessFactor;
+        m.metallic = (float)pbr.metallicFactor;
         m.emittance = (float)material.emissiveFactor[0];
         
         if (pbr.baseColorTexture.index >= 0) {
-            const auto& tex = model.textures[pbr.baseColorTexture.index];
-            m.diffuseId = tex.source;
+            const auto& baseTex = model.textures[pbr.baseColorTexture.index];
+            const auto& ormTex = model.textures[pbr.metallicRoughnessTexture.index];
+            m.diffuseId = baseTex.source;
+            m.roughMetalId = ormTex.source;
         }
 
         std::cout << "Material: " << material.name << std::endl;
-        printf("Base color: (%f, %f, %f)\n", m.color.r, m.color.g, m.color.b);
+        printf("Base color: (%f, %f, %f)\n", m.baseColor.r, m.baseColor.g, m.baseColor.b);
+        printf("Roughness: %f\n", m.roughness);
+        printf("Metallic: %f\n", m.metallic);
         printf("Emittance: %f\n", m.emittance);
-        printf("Diffuse texture id: %i\n", m.diffuseId);
+        printf("Reflection: %f\n", m.hasReflective);
+        printf("Refraction: %f\n", m.hasRefractive);
+        printf("Base color texture id: %i\n", m.diffuseId);
+        printf("Roughness/Metallic texture id: %i\n", m.roughMetalId);
 
         materials.push_back(std::move(m));
     }
@@ -347,7 +319,7 @@ void Scene::loadFromGLTF(const std::string& filename) {
     // Store textures
     std::cout << std::endl << "============ Textures ==============" << std::endl;
     //for (int i = 0; i < model.images.size(); ++i) {
-    for (int i = 0; i < 1; ++i) {
+    for (int i = 0; i < 2; ++i) {
         const auto& image = model.images[i];
         std::cout << "Texture " << i << ": " << image.uri << std::endl;
 
@@ -382,7 +354,7 @@ void Scene::initializeScene() {
     glm::vec3 p3(1.f, 5.f, -1.f);
     glm::vec3 n(0.f, -1.f, 0.f);
 
-    m.color = glm::vec3(1.f);
+    m.baseColor = glm::vec3(1.f);
     m.emittance = 5.f;
     int matId = materials.size();
 

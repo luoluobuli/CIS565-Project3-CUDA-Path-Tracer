@@ -85,8 +85,15 @@ static Geom* dev_geoms = NULL;
 static Material* dev_materials = NULL;
 static PathSegment* dev_paths = NULL;
 static ShadeableIntersection* dev_intersections = NULL;
-static cudaTextureObject_t texObj = 0;
-static cudaArray* cuArray = NULL;
+
+
+struct TexObjContainer
+{
+    cudaTextureObject_t texObj = 0;
+    cudaArray* cuArray = NULL;
+};
+std::vector<TexObjContainer> texObjConts;
+static TexObjContainer* dev_texObjConts = NULL;
 
 // TODO: static variables for device memory, any extra info you need, etc
 // ...
@@ -96,10 +103,45 @@ void InitDataContainer(GuiDataContainer* imGuiData)
     guiData = imGuiData;
 }
 
+void createTextureObjectHelper(Texture tex) {
+    TexObjContainer texObjCont;
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float4>();
+    cudaMallocArray(&texObjCont.cuArray, &channelDesc, tex.width, tex.height);
+
+    cudaMemcpy2DToArray(texObjCont.cuArray, 0, 0, tex.pixels.data(),
+        tex.width * sizeof(float4), tex.width * sizeof(float4),
+        tex.height, cudaMemcpyHostToDevice);
+    checkCUDAError("pathtraceInit - memcpy to array");
+
+    cudaResourceDesc resDesc = {};
+    resDesc.resType = cudaResourceTypeArray;
+    resDesc.res.array.array = texObjCont.cuArray;
+
+    cudaTextureDesc texDesc = {};
+    texDesc.addressMode[0] = cudaAddressModeWrap;
+    texDesc.addressMode[1] = cudaAddressModeWrap;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 1;
+
+    cudaCreateTextureObject(&texObjCont.texObj, &resDesc, &texDesc, nullptr);
+    checkCUDAError("pathtraceInit - create texture object");
+
+    texObjConts.push_back(texObjCont);
+}
+
 void pathtraceInit(Scene* scene)
 {
-    hst_scene = scene;
+    // Bind texture object
+    //Texture baseTex = scene->textures[0];
+    //createTextureObjectHelper(baseTex);
 
+    for (Texture tex : scene->textures) {
+        createTextureObjectHelper(tex);
+    }
+
+    // Allocate device variables
+    hst_scene = scene;
     const Camera& cam = hst_scene->state.camera;
     const int pixelcount = cam.resolution.x * cam.resolution.y;
 
@@ -117,33 +159,11 @@ void pathtraceInit(Scene* scene)
     cudaMalloc(&dev_intersections, pixelcount * sizeof(ShadeableIntersection));
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
-    checkCUDAError("pathtraceInit");
-
     // TODO: initialize any extra device memeory you need
-    // Bind texture object
-    Texture tex = hst_scene->textures[0];
+    cudaMalloc(&dev_texObjConts, texObjConts.size() * sizeof(TexObjContainer));
+    cudaMemcpy(dev_texObjConts, texObjConts.data(), texObjConts.size() * sizeof(TexObjContainer), cudaMemcpyHostToDevice);
 
-    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float4>();
-    cudaMallocArray(&cuArray, &channelDesc, tex.width, tex.height);
-
-    cudaMemcpy2DToArray(cuArray, 0, 0, tex.pixels.data(),
-        tex.width * sizeof(float4), tex.width * sizeof(float4),
-        tex.height, cudaMemcpyHostToDevice);
-    checkCUDAError("pathtraceInit - memcpy to array");
-
-    cudaResourceDesc resDesc = {};
-    resDesc.resType = cudaResourceTypeArray;
-    resDesc.res.array.array = cuArray;
-
-    cudaTextureDesc texDesc = {};
-    texDesc.addressMode[0] = cudaAddressModeWrap;
-    texDesc.addressMode[1] = cudaAddressModeWrap;
-    texDesc.filterMode = cudaFilterModeLinear;
-    texDesc.readMode = cudaReadModeElementType;
-    texDesc.normalizedCoords = 1;
-
-    cudaCreateTextureObject(&texObj, &resDesc, &texDesc, nullptr);
-    checkCUDAError("pathtraceInit - create texture object");
+    checkCUDAError("pathtraceInit");
 }
 
 void pathtraceFree()
@@ -154,8 +174,17 @@ void pathtraceFree()
     cudaFree(dev_materials);
     cudaFree(dev_intersections);
     // TODO: clean up any extra device memory you created
-    cudaDestroyTextureObject(texObj);
-    cudaFreeArray(cuArray);
+
+    for (auto& tex : texObjConts) {
+        if (tex.texObj) {
+            cudaDestroyTextureObject(tex.texObj);
+        }
+        if (tex.cuArray) {
+            cudaFreeArray(tex.cuArray);
+        }
+    }
+
+    cudaFree(dev_texObjConts);
 
     checkCUDAError("pathtraceFree");
 }
@@ -288,7 +317,7 @@ __global__ void shadeMaterial(
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
-    cudaTextureObject_t texObj,
+    TexObjContainer* texObjConts,
     bool rr)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -311,10 +340,11 @@ __global__ void shadeMaterial(
             thrust::uniform_real_distribution<float> u01(0, 1);
 
             Material material = materials[intersection.materialId];
-            glm::vec3 materialColor = material.color;
+            glm::vec3 materialColor = material.baseColor;
 
             // Sample texture
             if (material.diffuseId != -1) {
+                cudaTextureObject_t texObj = texObjConts[material.diffuseId].texObj;
                 float4 color = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
                 materialColor = glm::vec3(color.x, color.y, color.z);
             }
@@ -488,7 +518,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_intersections,
             dev_paths,
             dev_materials,
-            texObj,
+            dev_texObjConts,
             rr
         );
 
