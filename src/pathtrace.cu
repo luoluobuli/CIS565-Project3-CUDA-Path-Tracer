@@ -358,22 +358,23 @@ __global__ void shadeMaterial(
                 texObj = texObjConts[material.diffuseId].texObj;
                 sample = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
                 materialColor = glm::vec3(sample.x, sample.y, sample.z);
+                materialColor *= 1.2;
             }
 
-            if (material.normalId != -1) {
-                texObj = texObjConts[material.normalId].texObj;
-                sample = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
+            //if (material.normalId != -1) {
+            //    texObj = texObjConts[material.normalId].texObj;
+            //    sample = tex2D<float4>(texObj, intersection.uv.x, intersection.uv.y);
 
-                glm::vec3 newTan = normalize(glm::vec3(
-                    sample.x * 2.0f - 1.0f,
-                    sample.y * 2.0f - 1.0f,
-                    sample.z * 2.0f - 1.0f));
+            //    glm::vec3 newTan = normalize(glm::vec3(
+            //        sample.x * 2.0f - 1.0f,
+            //        sample.y * 2.0f - 1.0f,
+            //        sample.z * 2.0f - 1.0f));
 
-                intersection.surfaceNormal = normalize(
-                    intersection.tangent * newTan.x +
-                    intersection.bitangent * newTan.y +
-                    intersection.surfaceNormal * newTan.z);
-            }
+            //    intersection.surfaceNormal = normalize(
+            //        intersection.tangent * newTan.x +
+            //        intersection.bitangent * newTan.y +
+            //        intersection.surfaceNormal * newTan.z);
+            //}
 
             // If the material indicates that the object was a light, "light" the ray
             if (material.emittance > 0.0f) {
@@ -550,12 +551,13 @@ void pathtrace(uchar4* pbo, int frame, int iter)
         );
 
         // Stream Compaction
-        auto end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, IsDead{});
-        num_paths = end - dev_paths;
+        if (guiData != NULL && guiData->tog_stream_comp) {
+            auto end = thrust::partition(thrust::device, dev_paths, dev_paths + num_paths, IsDead{});
+            num_paths = end - dev_paths;
+        }
 
         if (num_paths == 0 || depth == traceDepth) iterationComplete = true; // DONE: should be based off stream compaction results.
         //iterationComplete = true;
-
 
         if (guiData != NULL)
         {

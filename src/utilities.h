@@ -21,11 +21,13 @@ public:
     GuiDataContainer() {
         TracedDepth = 0;
         tog_material_sort = 0;
-        tog_rr = 0;
+        tog_rr = 1;
+        tog_stream_comp = 1;
     }
     int TracedDepth;
     bool tog_material_sort;
     bool tog_rr;
+    bool tog_stream_comp;
 };
 
 namespace utilityCore

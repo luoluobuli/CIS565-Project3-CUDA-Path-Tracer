@@ -91,6 +91,8 @@ __host__ __device__ void scatterRay(
     thrust::uniform_real_distribution<float> u01(0, 1);
     float p = u01(rng);
 
+    if (dot(normal, wi) < 0) normal = -normal;
+
     // Specular
     if (m.hasReflective == 1.f || (m.hasReflective > 0.f && p < m.hasReflective)) { 
         wi = reflect(-wo, normal);

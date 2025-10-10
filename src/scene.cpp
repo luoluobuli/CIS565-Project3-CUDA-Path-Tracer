@@ -167,9 +167,10 @@ static void processNode(std::vector<Geom>& geoms, int nodeIndex, const tinygltf:
     }
 
     // Hardcoded waterbottle transformation!!
-    local = glm::translate(local, glm::vec3(0.f, 2.f, 0.f)); 
+    local = glm::translate(local, glm::vec3(0.f, 3.f, 0.f)); 
     local = glm::scale(local, glm::vec3(10.f));
     local = glm::rotate(local, glm::radians(80.f), glm::vec3(0, 1, 0));
+    local = glm::rotate(local, glm::radians(45.f), glm::vec3(0, 0, 1));
 
     // Get the world transformation
     glm::mat4 world = parentTransform * local; 
@@ -292,7 +293,8 @@ void Scene::loadFromGLTF(const std::string& filename) {
         Material m;
         const auto& pbr = material.pbrMetallicRoughness;
         m.baseColor = glm::vec3((float)pbr.baseColorFactor[0], (float)pbr.baseColorFactor[1], (float)pbr.baseColorFactor[2]);
-        m.roughness = (float)pbr.roughnessFactor;
+        //m.roughness = (float)pbr.roughnessFactor;
+        m.roughness = 0.5f;
         m.metallic = (float)pbr.metallicFactor;
         m.emittance = (float)material.emissiveFactor[0];
         
@@ -389,7 +391,7 @@ void Scene::initializeScene() {
     camera.lookAt = glm::vec3(0.0, 0.0, 0.0);
     camera.up = glm::vec3(0.0, 1.0, 0.0);
     
-    float fovy = 25.f;
+    float fovy = 45.f;
     float yscaled = tan(fovy * (PI / 180));
     float xscaled = (yscaled * camera.resolution.x) / camera.resolution.y;
     float fovx = (atan(xscaled) * 180) / PI;

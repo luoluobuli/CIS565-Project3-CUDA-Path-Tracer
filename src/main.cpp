@@ -24,6 +24,15 @@
 #include <sstream>
 #include <string>
 
+#define checkOptixError(call)                                                   \
+  {                                                                         \
+    OptixResult res = call;                                                 \
+    if (res != OPTIX_SUCCESS) {                                             \
+      fprintf(stderr, "OptiX call (%s) failed with code %d\n", #call, res); \
+      exit(2);                                                              \
+    }                                                                       \
+  }
+
 static std::string startTimeString;
 
 // For camera controls
@@ -287,6 +296,7 @@ void RenderImGui()
     ImGui::Text("Traced Depth %d", imguiData->TracedDepth);
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
+    ImGui::Checkbox("Stream compaction", &imguiData->tog_stream_comp);
     ImGui::Checkbox("Material sort", &imguiData->tog_material_sort);
     ImGui::Checkbox("Russion Rulette", &imguiData->tog_rr);
 
